@@ -1118,15 +1118,85 @@ document.addEventListener('keydown', e => {
   }
 });
 
+/ ══════════════════════════════════════════════════
+//  ADRES PLIKU EXCEL NA GITHUBIE
+//  ← zmień na swój adres!
+// ══════════════════════════════════════════════════
+const GITHUB_EXCEL_URL =
+  'https://raw.githubusercontent.com/stawor-ai/fiszki/main/fiszki.xlsx';
+
 // ══════════════════════════════════════════════════
 //  INIT
 // ══════════════════════════════════════════════════
-(function init() {
-  if (EMBEDDED_CARDS && EMBEDDED_CARDS.cards && EMBEDDED_CARDS.cards.length) {
-    allCards = EMBEDDED_CARDS.cards;
-    mastered = new Set(EMBEDDED_CARDS.mastered || []);
-    dontKnow = new Set(EMBEDDED_CARDS.dontKnow || []);
+(async function init() {
+
+  // 1. załaduj zapisany postęp (mastered, dontKnow) z localStorage
+  try {
+    const saved = localStorage.getItem('fiszki_progress');
+    if (saved) {
+      const p = JSON.parse(saved);
+      mastered = new Set(p.mastered || []);
+      dontKnow = new Set(p.dontKnow || []);
+    }
+  } catch(e) {}
+
+  // 2. spróbuj pobrać Excel z GitHuba
+  try {
+    showLoadingScreen('Wczytuję fiszki z GitHuba...');
+    const res  = await fetch(GITHUB_EXCEL_URL + '?t=' + Date.now());
+    const buf  = await res.arrayBuffer();
+    const wb   = XLSX.read(new Uint8Array(buf), { type: 'array' });
+    const sheet= wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, {
+      header: 1, defval: '', blankrows: false
+    });
+
+    const loaded = rows
+      .map(r => ({
+        question: String(r[0]||'').trim(),
+        answer:   String(r[1]||'').trim(),
+        tag:      String(r[2]||'').trim()
+      }))
+      .filter(c => c.question && c.answer);
+
+    if (loaded.length) {
+      allCards = loaded;
+      // zapisz lokalnie jako cache
+      localStorage.setItem('fiszki_cards', JSON.stringify(loaded));
+    }
+
+  } catch(e) {
+    // brak internetu → użyj cache z localStorage
+    console.log('Brak połączenia — ładuję z cache...');
+    try {
+      const cached = localStorage.getItem('fiszki_cards');
+      if (cached) allCards = JSON.parse(cached);
+    } catch(e2) {}
   }
+
+  showStart();
+})();
+
+// ══════════════════════════════════════════════════
+//  ZAPIS POSTĘPU DO localStorage (nie fiszek!)
+// ══════════════════════════════════════════════════
+function saveProgress() {
+  localStorage.setItem('fiszki_progress', JSON.stringify({
+    mastered: [...mastered],
+    dontKnow: [...dontKnow]
+  }));
+}
+
+// ══════════════════════════════════════════════════
+//  EKRAN ŁADOWANIA
+// ══════════════════════════════════════════════════
+function showLoadingScreen(msg) {
+  document.getElementById('startScreen').innerHTML = `
+    <div style="text-align:center; padding:60px 20px;">
+      <div style="font-size:3rem; margin-bottom:20px;">⏳</div>
+      <p style="color:#a8dadc; font-size:1.1rem;">${msg}</p>
+    </div>`;
+}
   showStart();
 })();
 </script>
